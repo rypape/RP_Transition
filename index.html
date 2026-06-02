@@ -84,6 +84,10 @@ footer {
 <div class="controls-bar">
   <span class="ctrl-label">Metric</span>
   <div class="met-row" id="sk-met"></div>
+  <div id="growers-note" style="display:none;margin-left:1rem;padding:.4rem .85rem;border:1px solid #3a3a42;border-radius:6px;background:#131316;font-family:'JetBrains Mono',monospace;font-size:.62rem;color:#6b6b78;max-width:460px;line-height:1.6">
+    <span style="color:#a78bfa;font-weight:600">Note · Growers metric</span><br>
+    A grower who removes some but not all fields appears in <span style="color:#ffaa00">Partly removed</span> <em>and</em> contributes to <span style="color:#00c896">Retained</span> — their remaining fields still flow through. For Fields, Acres and Credits the ribbons represent the exact portion that stayed or left, so a single grower can split across both flows.
+  </div>
 </div>
 
 <div class="legend-bar">
@@ -135,6 +139,7 @@ function buildMetric(){
     b.onclick = ()=>{ metric=m; buildMetric(); draw(); };
     wrap.appendChild(b);
   });
+  document.getElementById('growers-note').style.display = metric.key==='growers' ? 'block' : 'none';
 }
 
 function draw(){
@@ -286,32 +291,49 @@ function draw(){
       const tipY = f.leftExMidY;
       g.append('path').attr('d',taperedExit(xA+nW, f.leftFromY0, f.leftFromY1, xMid, tipY))
         .attr('fill',C.left).attr('opacity',.28);
-      // Small dot at tip
-      g.append('circle').attr('cx',xMid).attr('cy',tipY).attr('r',3).attr('fill',C.left).attr('opacity',.7);
-      // Label at tip
-      const lblX = xMid + 8;
-      g.append('text').attr('x',lblX).attr('y',tipY-5).attr('font-size',10).attr('fill',textCol).attr('font-weight','600').attr('font-family','Syne, sans-serif').text('Left entirely');
-      g.append('text').attr('x',lblX).attr('y',tipY+7).attr('font-size',9.5).attr('fill',C.left).attr('font-family',"'JetBrains Mono', monospace").text(fmtN(f.fullR));
+      g.append('circle').attr('cx',xMid).attr('cy',tipY).attr('r',2.5).attr('fill',C.left).attr('opacity',.7);
+      // Value pill — same style as retained label
+      const bg1 = g.append('g');
+      bg1.append('rect').attr('x',xMid-22).attr('y',tipY-9).attr('width',44).attr('height',17)
+        .attr('fill','#0c0c0e').attr('rx',3).attr('opacity',.75);
+      bg1.append('text').attr('x',xMid).attr('y',tipY+4)
+        .attr('text-anchor','middle').attr('font-size',9).attr('fill',C.left)
+        .attr('font-family',"'JetBrains Mono', monospace").text(fmtN(f.fullR));
     }
 
     if(f.partR>0){
       const tipY = f.partExMidY;
       g.append('path').attr('d',taperedExit(xA+nW, f.partFromY0, f.partFromY1, xMid, tipY))
         .attr('fill',C.part).attr('opacity',.28);
-      g.append('circle').attr('cx',xMid).attr('cy',tipY).attr('r',3).attr('fill',C.part).attr('opacity',.7);
-      const lblX = xMid + 8;
-      g.append('text').attr('x',lblX).attr('y',tipY-5).attr('font-size',10).attr('fill',textCol).attr('font-weight','600').attr('font-family','Syne, sans-serif').text('Partly removed');
-      g.append('text').attr('x',lblX).attr('y',tipY+7).attr('font-size',9.5).attr('fill',C.part).attr('font-family',"'JetBrains Mono', monospace").text(fmtN(f.partR));
+      g.append('circle').attr('cx',xMid).attr('cy',tipY).attr('r',2.5).attr('fill',C.part).attr('opacity',.7);
+      const bg2 = g.append('g');
+      bg2.append('rect').attr('x',xMid-22).attr('y',tipY-9).attr('width',44).attr('height',17)
+        .attr('fill','#0c0c0e').attr('rx',3).attr('opacity',.75);
+      bg2.append('text').attr('x',xMid).attr('y',tipY+4)
+        .attr('text-anchor','middle').attr('font-size',9).attr('fill',C.part)
+        .attr('font-family',"'JetBrains Mono', monospace").text(fmtN(f.partR));
     }
   });
 
-  // Draw "new" ribbons (need to come from off-left of each to-bar — draw after so they render on top)
+  // Draw "new" ribbons with value label
   flows.forEach((f, ti)=>{
     const xB = colX[ti+1];
     if(f.added>0){
-      // New flows in from the left edge
       const srcX = xB - colGap*0.3;
       g.append('path').attr('d',lp(srcX, f.toNewY0, f.toNewY1, xB, f.toNewY0, f.toNewY1)).attr('fill',C.new).attr('opacity',.22);
+      // Label centred on the ribbon
+      const mx  = (srcX + xB) / 2;
+      const cy  = (f.toNewY0 + f.toNewY1) / 2;
+      const rH  = f.toNewY1 - f.toNewY0;
+      const bg  = g.append('g');
+      bg.append('rect')
+        .attr('x', mx-24).attr('y', cy-9).attr('width', 48).attr('height', 17)
+        .attr('fill','#0c0c0e').attr('rx',3).attr('opacity',.75);
+      bg.append('text')
+        .attr('x', mx).attr('y', cy+4)
+        .attr('text-anchor','middle').attr('font-size',9).attr('fill', C.new)
+        .attr('font-family',"'JetBrains Mono', monospace")
+        .text(fmtN(f.added));
     }
   });
 
