@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Farm Transition · Flow Report</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+:root {
+  --bg:       #0c0c0e;
+  --surface:  #131316;
+  --surface2: #1a1a1f;
+  --border:   #2a2a30;
+  --border2:  #3a3a42;
+  --text:     #f0eff5;
+  --muted:    #6b6b78;
+  --subtle:   #3a3a42;
+  --ret:      #00c896;
+  --new:      #4a9eff;
+  --left:     #ff5c5c;
+  --part:     #ffaa00;
+  --rp:       #a78bfa;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); font-family: 'Syne', sans-serif; color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+header {
+  padding: 2.5rem 3rem 2rem;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; flex-wrap: wrap;
+}
+.header-left h1 { font-size: clamp(1.4rem,3vw,2rem); font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+.header-left p  { font-family: 'JetBrains Mono', monospace; font-size: .62rem; color: var(--muted); margin-top: .5rem; letter-spacing: .04em; }
+.header-tag { font-family: 'JetBrains Mono', monospace; font-size: .62rem; color: var(--muted); border: 1px solid var(--border); padding: .35rem .75rem; border-radius: 4px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+
+.controls-bar {
+  padding: 1.25rem 3rem;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+.ctrl-label { font-family: 'JetBrains Mono', monospace; font-size: .6rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-right: .5rem; }
+.met-row { display: flex; gap: 4px; }
+.met-btn {
+  padding: 0 14px; height: 32px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--muted); font-family: 'Syne', sans-serif;
+  font-size: .75rem; font-weight: 500; cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.met-btn:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+.met-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+.legend-bar {
+  padding: .8rem 3rem; display: flex; gap: 1.5rem; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+.leg { display: flex; align-items: center; gap: 7px; font-family: 'JetBrains Mono', monospace; font-size: .62rem; color: var(--muted); letter-spacing: .02em; }
+.leg-pip { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+.chart-wrap { padding: 2.5rem 3rem 2rem; overflow-x: auto; }
+#sk-chart { min-width: 700px; }
+
+footer {
+  padding: 1rem 3rem; border-top: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace; font-size: .6rem; color: var(--muted);
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem;
+}
+
+@media (max-width: 600px) {
+  header, .controls-bar, .legend-bar, .chart-wrap, footer { padding-left: 1.25rem; padding-right: 1.25rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>Farm Transition<br>Flow Report</h1>
+    <p>SOURCE: TRANSITION_SUMMARY.CSV &nbsp;·&nbsp; 79,718 ROWS &nbsp;·&nbsp; 5 REPORTING PERIODS</p>
+  </div>
+  <div class="header-tag">ALL RPs · GROWER IDs NORMALISED</div>
+</header>
+
+<div class="controls-bar">
+  <span class="ctrl-label">Metric</span>
+  <div class="met-row" id="sk-met"></div>
+</div>
+
+<div class="legend-bar">
+  <span class="leg"><span class="leg-pip" style="background:#a78bfa"></span>RP total</span>
+  <span class="leg"><span class="leg-pip" style="background:#00c896"></span>Retained</span>
+  <span class="leg"><span class="leg-pip" style="background:#4a9eff"></span>New / added</span>
+  <span class="leg"><span class="leg-pip" style="background:#ff5c5c"></span>Left entirely</span>
+  <span class="leg"><span class="leg-pip" style="background:#ffaa00"></span>Partially removed</span>
+</div>
+
+<div class="chart-wrap">
+  <div id="sk-chart" style="width:100%"></div>
+</div>
+
+<footer>
+  <span>GENERATED MAY 2026</span>
+  <span>⚠ RP2→RP3: grower ID format change — 408/424 growers resolved via mapping; 16 counted as fully removed</span>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+// Per-consecutive-transition data for all four transitions
+const TRANSITIONS = [
+  {"fromRP":"1","toRP":"2","growersAdded":264,"growersFullRem":15,"growersPartRem":42,"growersUnchanged":118,"fieldsAdded":4007,"fieldsFullRem":58,"fieldsPartRem":59,"fieldsSame":1065,"acresAdded":333937.6,"acresFullRem":5139.0,"acresPartRem":6268.7,"acresSame":88890.6,"creditsAdded":96806.9,"creditsFullRem":1236.93,"creditsPartRem":880.42,"creditsSame":14471.18,"totalGrowersA":175,"totalGrowersB":424,"totalFieldsA":1182,"totalFieldsB":5072,"totalAcresA":100371.8,"totalAcresB":423740.0,"totalCreditsA":24890.0,"totalCreditsB":111389.0},
+  {"fromRP":"2","toRP":"3","growersAdded":564,"growersFullRem":16,"growersPartRem":187,"growersUnchanged":221,"fieldsAdded":11541,"fieldsFullRem":93,"fieldsPartRem":769,"fieldsSame":4210,"acresAdded":946762.5,"acresFullRem":4817.5,"acresPartRem":76043.3,"acresSame":341754.7,"creditsAdded":100128.52,"creditsFullRem":1509.03,"creditsPartRem":16689.06,"creditsSame":62780.73,"totalGrowersA":424,"totalGrowersB":972,"totalFieldsA":5072,"totalFieldsB":15751,"totalAcresA":423740.0,"totalAcresB":1289360.7,"totalCreditsA":111389.0,"totalCreditsB":163048.0},
+  {"fromRP":"3","toRP":"4","growersAdded":314,"growersFullRem":199,"growersPartRem":224,"growersUnchanged":549,"fieldsAdded":7961,"fieldsFullRem":2594,"fieldsPartRem":886,"fieldsSame":12271,"acresAdded":621747.3,"acresFullRem":315050.2,"acresPartRem":76921.0,"acresSame":894939.4,"creditsAdded":306971.43,"creditsFullRem":26019.1,"creditsPartRem":8887.95,"creditsSame":323047.66,"totalGrowersA":972,"totalGrowersB":1087,"totalFieldsA":15751,"totalFieldsB":20232,"totalAcresA":1289360.7,"totalAcresB":1517893.4,"totalCreditsA":163048.0,"totalCreditsB":630705.0},
+  {"fromRP":"4","toRP":"5","growersAdded":495,"growersFullRem":158,"growersPartRem":283,"growersUnchanged":646,"fieldsAdded":19783,"fieldsFullRem":1482,"fieldsPartRem":1113,"fieldsSame":17637,"acresAdded":1185284.6,"acresFullRem":120105.0,"acresPartRem":84086.5,"acresSame":1275762.9,"creditsAdded":790626.29,"creditsFullRem":47856.24,"creditsPartRem":40783.93,"creditsSame":395533.29,"totalGrowersA":1087,"totalGrowersB":1424,"totalFieldsA":20232,"totalFieldsB":37420,"totalAcresA":1517893.4,"totalAcresB":2462453.5,"totalCreditsA":630705.0,"totalCreditsB":1187163.0}
+];
+
+const METRICS = [
+  {key:'growers', label:'Growers', totalA:'totalGrowersA', totalB:'totalGrowersB', added:'growersAdded', fullRem:'growersFullRem', partRem:'growersPartRem', same:'growersUnchanged'},
+  {key:'fields',  label:'Fields',  totalA:'totalFieldsA',  totalB:'totalFieldsB',  added:'fieldsAdded',  fullRem:'fieldsFullRem',  partRem:'fieldsPartRem',  same:'fieldsSame'},
+  {key:'acres',   label:'Acres',   totalA:'totalAcresA',   totalB:'totalAcresB',   added:'acresAdded',   fullRem:'acresFullRem',   partRem:'acresPartRem',   same:'acresSame'},
+  {key:'credits', label:'Credits', totalA:'totalCreditsA', totalB:'totalCreditsB', added:'creditsAdded', fullRem:'creditsFullRem', partRem:'creditsPartRem', same:'creditsSame'},
+];
+
+const C = { ret:'#00c896', new:'#4a9eff', left:'#ff5c5c', part:'#ffaa00', rp:'#a78bfa' };
+
+let metric = METRICS[0];
+
+function fmtN(n){ const a=Math.abs(n); if(a>=1e6)return(n/1e6).toFixed(1)+'M'; if(a>=1e3)return(n/1e3).toFixed(1)+'k'; return Math.round(n).toLocaleString(); }
+
+function buildMetric(){
+  const wrap = document.getElementById('sk-met'); wrap.innerHTML='';
+  METRICS.forEach(m=>{
+    const b = document.createElement('button');
+    b.className = 'met-btn'+(m.key===metric.key?' active':'');
+    b.textContent = m.label;
+    b.onclick = ()=>{ metric=m; buildMetric(); draw(); };
+    wrap.appendChild(b);
+  });
+}
+
+function draw(){
+  const container = document.getElementById('sk-chart');
+  const W = Math.max(container.clientWidth||700, 700);
+
+  // Layout constants
+  const nW      = 14;   // node bar width
+  const padL    = 70;   // left label padding
+  const padR    = 70;   // right label padding
+  const mt      = 30;
+  const mb      = 50;   // extra bottom for exit nodes
+  const colGap  = (W - padL - padR - nW * 5) / 4; // gap between columns
+  const maxBarH = 280;  // max height for the tallest bar
+
+  // Collect all RP totals
+  const rpTotals = [
+    TRANSITIONS[0][metric.totalA],
+    TRANSITIONS[0][metric.totalB],
+    TRANSITIONS[1][metric.totalB],
+    TRANSITIONS[2][metric.totalB],
+    TRANSITIONS[3][metric.totalB],
+  ];
+  const globalMax = Math.max(...rpTotals);
+  const scale = v => v > 0 ? Math.max(Math.round((v / globalMax) * maxBarH), 3) : 0;
+
+  // Column x positions (left edge of each bar)
+  const colX = [0,1,2,3,4].map(i => padL + i*(nW+colGap));
+
+  // Bar heights for each RP column
+  const rpH = rpTotals.map(scale);
+
+  // Vertical centre — align each bar to the midpoint of the tallest
+  const midY = maxBarH / 2 + mt;
+  const rpY0 = rpH.map(h => midY - h/2);
+
+  // For each transition, compute flow heights proportionally
+  const flows = TRANSITIONS.map((t, ti) => {
+    const totalA = t[metric.totalA];
+    const same   = t[metric.same];
+    const added  = t[metric.added];
+    const fullR  = t[metric.fullRem];
+    const partR  = t[metric.partRem];
+
+    const retH  = scale(same);
+    const newH  = scale(added);
+    const leftH = scale(fullR);
+    const partH = scale(partR);
+
+    // From bar split: retained occupies top, left next, part at bottom
+    const fH   = rpH[ti];
+    const fY0  = rpY0[ti];
+    const retFrac  = totalA>0 ? same/totalA   : 0;
+    const leftFrac = totalA>0 ? fullR/totalA  : 0;
+    const partFrac = totalA>0 ? partR/totalA  : 0;
+
+    const retFromY0  = fY0;
+    const retFromY1  = fY0 + fH*retFrac;
+    const leftFromY0 = retFromY1;
+    const leftFromY1 = leftFromY0 + fH*leftFrac;
+    const partFromY0 = leftFromY1;
+    const partFromY1 = fY0+fH;
+
+    // To bar: retained top, new bottom
+    const tH  = rpH[ti+1];
+    const tY0 = rpY0[ti+1];
+    const toRetY0 = tY0;
+    const toRetY1 = tY0 + tH*(same/(same+added || 1));
+    const toNewY0 = toRetY1;
+    const toNewY1 = tY0+tH;
+
+    // Exit ribbons taper to a point at midpoint between columns — not reaching next RP
+    // We store the mid-x and the vertical centre point for the tapered tip
+    const midXExit = 0.55; // fractional position between xA and xB where ribbon dies (0=xA, 1=xB)
+
+    // Vertical drop position for exit labels (below the from bar)
+    const baseExit = fY0 + fH + 28;
+    const leftExMidY = baseExit + leftH / 2;
+    const partExMidY = baseExit + leftH + 8 + partH / 2;
+
+    return {
+      retFromY0,retFromY1,leftFromY0,leftFromY1,partFromY0,partFromY1,
+      toRetY0,toRetY1,toNewY0,toNewY1,
+      leftExMidY, partExMidY, midXExit,
+      retH,newH,leftH,partH,same,added,fullR,partR,
+    };
+  });
+
+  // Overall SVG height — exits taper in the gap, so height driven by RP bars + some breathing room
+  const H = midY + maxBarH/2 + mb + 60;
+
+  container.innerHTML='';
+  const svg = d3.select('#sk-chart').append('svg').attr('width',W).attr('height',H);
+  const g   = svg.append('g');
+
+  const textCol  = '#f0eff5';
+  const mutedCol = '#6b6b78';
+  const dimCol   = '#2a2a30';
+
+  // Vertical guide lines at each column
+  colX.forEach(x=>{
+    g.append('line').attr('x1',x+nW/2).attr('x2',x+nW/2).attr('y1',mt/2).attr('y2',H-mb/2)
+      .attr('stroke',dimCol).attr('stroke-width',1).attr('stroke-dasharray','2,5');
+  });
+
+  function lp(x0,ya0,ya1,x1,yb0,yb1){
+    const mx=(x0+x1)/2;
+    return `M${x0},${ya0} C${mx},${ya0} ${mx},${yb0} ${x1},${yb0} L${x1},${yb1} C${mx},${yb1} ${mx},${ya1} ${x0},${ya1} Z`;
+  }
+
+  function bar(x,y0,h,color){
+    if(h<1) return;
+    g.append('rect').attr('x',x-2).attr('y',y0-2).attr('width',nW+4).attr('height',Math.max(h,2)+4)
+      .attr('fill',color).attr('rx',4).attr('opacity',.15).style('filter','blur(5px)');
+    g.append('rect').attr('x',x).attr('y',y0).attr('width',nW).attr('height',Math.max(h,2))
+      .attr('fill',color).attr('rx',3);
+  }
+
+  const MIN_LBL = 18;
+
+  function lbl(x,y0,h,name,val,color,anchor){
+    if(h<2) return;
+    const cy=y0+h/2, xOff=anchor==='end'?-10:nW+10;
+    if(h>=MIN_LBL){
+      g.append('text').attr('x',x+xOff).attr('y',cy-5).attr('text-anchor',anchor).attr('font-size',10).attr('fill',textCol).attr('font-weight','600').attr('font-family','Syne, sans-serif').text(name);
+      g.append('text').attr('x',x+xOff).attr('y',cy+7).attr('text-anchor',anchor).attr('font-size',9.5).attr('fill',color||mutedCol).attr('font-family',"'JetBrains Mono', monospace").text(fmtN(val));
+    } else {
+      g.append('text').attr('x',x+xOff).attr('y',cy+4).attr('text-anchor',anchor).attr('font-size',9).attr('fill',color||mutedCol).attr('font-family',"'JetBrains Mono', monospace").text(fmtN(val));
+    }
+  }
+
+  // Path that tapers to a horizontal point: starts as a band at x0, narrows to a point at xTip
+  function taperedExit(x0, ya0, ya1, xTip, yMid){
+    const mx = (x0 + xTip) / 2;
+    return `M${x0},${ya0} C${mx},${ya0} ${mx},${yMid} ${xTip},${yMid} C${mx},${yMid} ${mx},${ya1} ${x0},${ya1} Z`;
+  }
+
+  // Draw each transition's ribbons
+  flows.forEach((f, ti)=>{
+    const xA = colX[ti];
+    const xB = colX[ti+1];
+    const xMid = xA + nW + (xB - xA - nW) * 0.52; // taper dies at ~52% of the gap
+
+    // Retained ribbon — full width, flows to next RP
+    if(f.same>0)    { g.append('path').attr('d',lp(xA+nW,f.retFromY0, f.retFromY1, xB,f.toRetY0,f.toRetY1)).attr('fill',C.ret).attr('opacity',.18); }
+
+    // Exit ribbons — taper to a point in the middle of the gap
+    if(f.fullR>0){
+      const tipY = f.leftExMidY;
+      g.append('path').attr('d',taperedExit(xA+nW, f.leftFromY0, f.leftFromY1, xMid, tipY))
+        .attr('fill',C.left).attr('opacity',.28);
+      // Small dot at tip
+      g.append('circle').attr('cx',xMid).attr('cy',tipY).attr('r',3).attr('fill',C.left).attr('opacity',.7);
+      // Label at tip
+      const lblX = xMid + 8;
+      g.append('text').attr('x',lblX).attr('y',tipY-5).attr('font-size',10).attr('fill',textCol).attr('font-weight','600').attr('font-family','Syne, sans-serif').text('Left entirely');
+      g.append('text').attr('x',lblX).attr('y',tipY+7).attr('font-size',9.5).attr('fill',C.left).attr('font-family',"'JetBrains Mono', monospace").text(fmtN(f.fullR));
+    }
+
+    if(f.partR>0){
+      const tipY = f.partExMidY;
+      g.append('path').attr('d',taperedExit(xA+nW, f.partFromY0, f.partFromY1, xMid, tipY))
+        .attr('fill',C.part).attr('opacity',.28);
+      g.append('circle').attr('cx',xMid).attr('cy',tipY).attr('r',3).attr('fill',C.part).attr('opacity',.7);
+      const lblX = xMid + 8;
+      g.append('text').attr('x',lblX).attr('y',tipY-5).attr('font-size',10).attr('fill',textCol).attr('font-weight','600').attr('font-family','Syne, sans-serif').text('Partly removed');
+      g.append('text').attr('x',lblX).attr('y',tipY+7).attr('font-size',9.5).attr('fill',C.part).attr('font-family',"'JetBrains Mono', monospace").text(fmtN(f.partR));
+    }
+  });
+
+  // Draw "new" ribbons (need to come from off-left of each to-bar — draw after so they render on top)
+  flows.forEach((f, ti)=>{
+    const xB = colX[ti+1];
+    if(f.added>0){
+      // New flows in from the left edge
+      const srcX = xB - colGap*0.3;
+      g.append('path').attr('d',lp(srcX, f.toNewY0, f.toNewY1, xB, f.toNewY0, f.toNewY1)).attr('fill',C.new).attr('opacity',.22);
+    }
+  });
+
+  // Draw RP bars (on top of ribbons)
+  [0,1,2,3,4].forEach(i=>{
+    bar(colX[i], rpY0[i], rpH[i], C.rp);
+  });
+
+  // RP column labels (top)
+  [0,1,2,3,4].forEach(i=>{
+    g.append('text')
+      .attr('x', colX[i]+nW/2).attr('y', mt-10)
+      .attr('text-anchor','middle').attr('font-size',11).attr('fill',textCol)
+      .attr('font-weight','700').attr('font-family','Syne, sans-serif')
+      .text(`RP ${i+1}`);
+    g.append('text')
+      .attr('x', colX[i]+nW/2).attr('y', rpY0[i]+rpH[i]+14)
+      .attr('text-anchor','middle').attr('font-size',9.5).attr('fill',C.rp)
+      .attr('font-family',"'JetBrains Mono', monospace")
+      .text(fmtN(rpTotals[i]));
+  });
+
+  // Retained labels between each pair of columns
+  flows.forEach((f,ti)=>{
+    if(f.same<=0||f.retH<MIN_LBL) return;
+    const xA = colX[ti], xB = colX[ti+1];
+    const mx = (xA+nW+xB)/2;
+    const cy = (f.retFromY0+f.retFromY1)/2;
+    const bg = g.append('g');
+    bg.append('rect')
+      .attr('x',mx-22).attr('y',cy-9).attr('width',44).attr('height',17)
+      .attr('fill','#0c0c0e').attr('rx',3).attr('opacity',.75);
+    bg.append('text')
+      .attr('x',mx).attr('y',cy+4)
+      .attr('text-anchor','middle').attr('font-size',9).attr('fill',C.ret)
+      .attr('font-family',"'JetBrains Mono', monospace")
+      .text(fmtN(f.same));
+  });
+}
+
+buildMetric(); draw();
+window.addEventListener('resize', draw);
+</script>
+</body>
+</html>
